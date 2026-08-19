@@ -1,0 +1,128 @@
+TPC_Triple_Predicate_Cubed/
+|   .gitignore
+|   acp_synthesis.py
+|   ARCHITECTURE_REGISTRY.md
+|   image.png
+|   Integration.py                      CANONICAL ORCHESTRATOR — 10-stage pipeline
+|   logoconcept1.png
+|   logofinalTPC.png
+|   mypy.ini
+|   pytest.ini
+|   README.md
+|   requirements.txt
+|   results_vault.py
+|   TPC_Abstract
+|   TPC_dir_structure
+|   tpc_architecture_visualization.py   (root shim -> tools/visualization/)
+|   tpc_cubed.py
+|   tpc_full_system_demo.py
+|   tpc_system_orchestrator.py          (retired shim -> Integration.py)
+|   tree.txt
+|   __init__.py
+|
++---.github/
+|   \---workflows/
+|           ci.yml
+|
++---api/
+|       main.py                         FastAPI — port 8003
+|       __init__.py
+|
++---cochlear_processor_3.0/
+|       adaptive_plasticity.py
+|       cochlear_processor_v3.py
+|       cognitive_inference.py
+|       correction_loop.py
+|       docker-compose.yml
+|       Dockerfile
+|       hearing_skg.json
+|       LICENSE
+|       perceptual_filter.py
+|       processor.py
+|       processor_v2.py
+|       README.md
+|       requirements.txt
+|       skg_learning_bridge.py
+|       skg_perceptual_filter.py
+|       test_skg_cochlear.py            module-scoped cochlear unit tests
+|       __init__.py
+|
++---core/
+|       ecm.py
+|       geometric_primitives.py
+|       pipeline.py
+|       __init__.py
+|
++---drift/
+|       ping.py
+|       __init__.py
+|
++---Epistemic_Gravity_Field/
+|       distribution_shift_test.py      CI — distribution shift resilience
+|       LICENSE
+|       perturb_test.py                 CI — attractor self-repair
+|       README.md
+|       space_field.py
+|       stress_test.py                  CI — memory leaks + boundary conditions
+|       visualize.py
+|       __init__.py
+|
++---examples/
+|       demo.py
+|       __init__.py
+|
++---philosophers/
+|       base.py                         (deferred — see ARCHITECTURE_REGISTRY.md)
+|       seed_hume.json
+|       seed_kant.json
+|       seed_locke.json
+|       seed_spinoza.json
+|       __init__.py
+|
++---tests/                              ALL ROOT-LEVEL TESTS CONSOLIDATED HERE
+|       demo_test.py                    10 diagnostic tests — used by GET /run-tests
+|       hard_tests.py                   pytest parametrized beam tests
+|       quick_test.py                   smoke test
+|       test_four_beam.py               four-beam integration tests
+|       __init__.py
+|
++---tools/
+|   \---visualization/
+|           tpc_architecture_visualization.py
+|
++---ui/
+|   |   .gitignore
+|   |   eslint.config.js
+|   |   index.html
+|   |   package.json
+|   |   package-lock.json
+|   |   README.md
+|   |   vite.config.js
+|   |
+|   +---public/
+|   |       favicon.svg
+|   |       icons.svg
+|   |       logofinalTPC.png
+|   |
+|   \---src/
+|       |   App.css
+|       |   App.jsx
+|       |   index.css
+|       |   main.jsx
+|       |
+|       \---assets/
+|               hero.png
+|               react.svg
+|               vite.svg
+|
+\---vaults/
+        system.py
+        __init__.py
+
+--- EXCLUDED FROM TREE ---
+  ui/node_modules/     (npm packages — gitignored)
+  ui/dist/             (build output — gitignored)
+  **/__pycache__/      (bytecode cache — gitignored)
+  results/             (runtime query vault — gitignored)
+  vault_traces/        (cochlear traces — gitignored)
+  outputs/             (viz PNGs — gitignored)
