@@ -33,3 +33,18 @@ class DockActionRequest(BaseModel):
     action: str
     arguments: Dict[str, Any] = Field(default_factory=dict)
     route: Optional[str] = None
+
+
+class PointerAuthorityRequest(BaseModel):
+    current_route: str = "/"
+    query: str = Field(..., min_length=1, max_length=1000)
+    target_id: Optional[str] = Field(default=None, max_length=180)
+    cycle_id: Optional[str] = Field(default=None, max_length=180)
+
+
+class NavigationAuthorityRequest(BaseModel):
+    current_route: str = "/"
+    target_route: str = Field(..., min_length=1, max_length=1000)
+    intent: str = Field(..., min_length=1, max_length=1000)
+    user_confirmed: bool = False
+    cycle_id: Optional[str] = Field(default=None, max_length=180)

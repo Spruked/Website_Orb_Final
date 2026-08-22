@@ -1,0 +1,17 @@
+{
+  "schema": "website_orb.orbot_vendor_provenance.v1",
+  "source_repository": "Spruked/Orbot",
+  "source_commit": "ec06be9af2027dcee6e4003f74d1a1c0df2c233f",
+  "source_path": "runtime/ral_core/ral_core",
+  "integration_mode": "byte_identical_vendor_copy",
+  "files": {
+    "__init__.py": "0b7373148a3a8b28edee85da97a76d5bef953061",
+    "models.py": "6da34ad1eac674602ba142851a20c39bfa48b882",
+    "admission.py": "40d8a4c5c2594c2b26573dbacfc08e5141be1310",
+    "core4.py": "e98f7c5002d8b210bdd1eaf432bff680a695ad84",
+    "middleware.py": "963ec0191635385ff6ca3afc8985f0d3ab75291a",
+    "event_bus.py": "86c0c79fdb6d3c4087c644fd002e80813174817b",
+    "telemetry.py": "8e0503303259e70ae1d897ab865945d71c674cd8"
+  },
+  "rule": "Do not modify vendored Orbot authority files in-place. Update by re-vendoring from an explicitly reviewed Orbot commit; Website ORB-specific behavior belongs in sibling adapters."
+}
