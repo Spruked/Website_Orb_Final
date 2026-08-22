@@ -7,6 +7,17 @@ from ..runtime.site_world import SiteWorld, normalize_route
 
 def route_pointer_targets(world: SiteWorld, route: str, query: str = "", limit: int = 5) -> List[Dict[str, Any]]:
     normalized = normalize_route(route)
+
+    # Once a navigation-world readiness contract exists, it is authoritative
+    # for whether pointer candidates may leave the knowledge layer at all.
+    # This prevents legacy answer responses from surfacing pointer candidates
+    # while Pointer Recovery or route/locator conflict resolution is blocking
+    # runtime guidance.
+    if world.navigation_world:
+        readiness = world.navigation_world.get("guidance_readiness") or {}
+        if readiness and readiness.get("pointer_execution_available") is not True:
+            return []
+
     records = list(world.pointer_by_route.get(normalized, []))
 
     # Legacy packages without a navigation world used the home route as a broad
