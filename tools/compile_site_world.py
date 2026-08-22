@@ -17,22 +17,42 @@ def main() -> None:
     tool_cache = load_json(COMPILED / "tool_cache.json")
     latest_context = load_json(COMPILED / "latest_context.json")
     self_scan = load_json(COMPILED / "self_scan_summary.json")
+    navigation_world = load_optional_json(COMPILED / "navigation_world.json")
+    if not navigation_world and isinstance(pointer_map.get("navigation_world"), dict):
+        navigation_world = dict(pointer_map["navigation_world"])
 
     records_by_route = group_records(pointer_map.get("records", []))
     route_hints = runtime_language.get("route_hints") or {}
-    routes = sorted(set(records_by_route) | {normalize_route(value) for value in route_hints.values()})
+    nav_nodes = ((navigation_world.get("route_graph") or {}).get("nodes_by_route") or {}) if navigation_world else {}
+    routes = sorted(
+        set(records_by_route)
+        | {normalize_route(value) for value in route_hints.values()}
+        | {normalize_route(route) for route in nav_nodes}
+    )
     if "/" not in routes:
         routes.insert(0, "/")
 
     route_records = {
-        route: build_route_record(route, records_by_route.get(route, []), runtime_language, latest_context)
+        route: build_route_record(
+            route,
+            records_by_route.get(route, []),
+            runtime_language,
+            latest_context,
+            navigation_world,
+        )
         for route in routes
     }
 
+    navigation_summary = navigation_world.get("summary") or {}
+    has_navigation_world = bool(navigation_world.get("schema"))
     world = {
-        "schema": "orb_weaver.website_orb.site_world.v1",
+        "schema": "orb_weaver.website_orb.site_world.v2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "runtime_contract": "precompiled_skg_lookup_only",
+        "runtime_contract": (
+            "precompiled_skg_plus_topological_navigation"
+            if has_navigation_world
+            else "precompiled_skg_lookup_only"
+        ),
         "site": {
             "name": runtime_language.get("site_name", "Orb Weaver"),
             "domain": runtime_language.get("domain", "orbweaver.spruked.com"),
@@ -45,19 +65,54 @@ def main() -> None:
         "answer_boundaries": runtime_language.get("answer_boundaries", []),
         "route_aliases": {normalize_route(value): normalize_route(value) for value in route_hints.values()},
         "routes": route_records,
+        "navigation": {
+            "available": has_navigation_world,
+            "schema": navigation_world.get("schema"),
+            "version": navigation_world.get("version"),
+            "summary": navigation_summary,
+            "world_state_seed": navigation_world.get("world_state_seed") or {},
+            "artifact": "navigation_world.json" if has_navigation_world else None,
+            "semantic_context_policy": "current_tile_plus_bounded_neighbors",
+            "planning_policy": "topological_path_planning_does_not_authorize_execution",
+        },
+        "orbot_authority_contract": {
+            "required_for_execution_lanes": ["pointer", "motion", "tool"],
+            "knowledge_only_answer_lane": "does_not_require_execution_permit",
+            "sequence": [
+                "world_state",
+                "ral_proposal",
+                "core4",
+                "hard_admission",
+                "execution_permit",
+                "executor",
+                "telemetry_correspondence",
+            ],
+            "hard_rule": "no_valid_execution_permit_no_normal_execution",
+        },
         "source_inventory": {
             "pointer_records": pointer_map.get("record_count", len(pointer_map.get("records", []))),
             "routes_with_pointers": len(records_by_route),
             "tool_cache_entries": len(tool_cache.get("entries", [])),
             "pages_scanned": self_scan.get("pages_scanned"),
             "orb_ready_score": latest_context.get("orb_ready_score"),
+            "topological_route_nodes": navigation_summary.get("scanned_route_nodes", 0),
+            "topological_edges": navigation_summary.get("topological_edges", 0),
+            "unique_entities": navigation_summary.get("unique_entities", 0),
+            "entity_relationships": navigation_summary.get("entity_relationships", 0),
+            "semantic_tiles": navigation_summary.get("semantic_tiles", 0),
+            "route_locator_conflicts": navigation_summary.get("route_locator_conflicts", 0),
+            "navigation_guidance_status": navigation_summary.get("guidance_status"),
         },
     }
 
     out = COMPILED / "site_world.json"
     out.write_text(json.dumps(world, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {out}")
-    print(f"routes={len(route_records)} pointer_records={world['source_inventory']['pointer_records']}")
+    print(
+        f"routes={len(route_records)} "
+        f"pointer_records={world['source_inventory']['pointer_records']} "
+        f"navigation_world={has_navigation_world}"
+    )
 
 
 def build_route_record(
@@ -65,6 +120,7 @@ def build_route_record(
     records: List[Dict[str, Any]],
     runtime_language: Dict[str, Any],
     latest_context: Dict[str, Any],
+    navigation_world: Dict[str, Any],
 ) -> Dict[str, Any]:
     top = sorted(records, key=lambda record: float(record.get("confidence") or 0), reverse=True)
     top_value = top[:8]
@@ -73,11 +129,33 @@ def build_route_record(
     page_purpose = infer_page_purpose(route, runtime_language)
     keywords = sorted(set(words_from_route(route)) | set(words_from_records(top_value)))
 
+    graph = navigation_world.get("route_graph") or {}
+    nav_nodes = graph.get("nodes_by_route") or {}
+    nav_node = nav_nodes.get(route) if isinstance(nav_nodes, dict) else None
+    nav_node = nav_node if isinstance(nav_node, dict) else {}
+    adjacency = graph.get("adjacency") or {}
+    incoming = graph.get("incoming_adjacency") or {}
+    tiles = navigation_world.get("semantic_tiles") or {}
+    tile = tiles.get(route) if isinstance(tiles, dict) else None
+    tile = tile if isinstance(tile, dict) else {}
+    readiness = navigation_world.get("guidance_readiness") or {}
+    route_readiness = readiness.get("route_status") or {}
+    route_readiness = route_readiness.get(route) if isinstance(route_readiness, dict) else None
+
     return {
         "route": route,
         "page_purpose": page_purpose,
         "summary": infer_summary(route, page_purpose, runtime_language),
         "keywords": keywords[:40],
+        "topological_localization": {
+            "node_id": nav_node.get("node_id"),
+            "route_class": nav_node.get("route_class"),
+            "outgoing_neighbors": list(adjacency.get(route, [])) if isinstance(adjacency, dict) else [],
+            "incoming_neighbors": list(incoming.get(route, [])) if isinstance(incoming, dict) else [],
+            "entity_ids": nav_node.get("entity_ids", []),
+            "semantic_tile_version": tile.get("tile_version"),
+            "guidance_readiness": route_readiness or {},
+        },
         "target_tiering": {
             "top_value_targets": summarize_targets(top_value),
             "secondary_targets": summarize_targets(secondary),
@@ -85,27 +163,31 @@ def build_route_record(
         },
         "permitted_action_boundaries": [
             "voice_answer",
-            "point_only_after_live_dom_resolution",
-            "cross_page_navigation_requires_explicit_confirmation",
+            "point_only_after_live_dom_resolution_and_execution_permit",
+            "cross_page_navigation_requires_explicit_confirmation_and_execution_permit",
             "no_site_modification_without_owner_confirmation",
         ],
         "doctrine_conditions": {
             "canonical_hash_status": "source_package_reference",
             "conditions": [
+                "localize_current_route_before_pointer_lookup",
                 "resolve_pointer_before_visual_guidance",
                 "voice_only_when_target_unresolved",
+                "route_planning_never_equals_execution_authority",
                 "do_not_claim_desktop_tools_by_default",
             ],
         },
         "tpc_output_classes": {
-            "precleared": ["answer", "point_if_resolved", "explain_current_route"],
-            "requires_escalation": ["navigate_cross_page", "site_modification", "desktop_tool"],
+            "precleared": ["answer", "explain_current_route"],
+            "requires_execution_permit": ["point_if_resolved", "navigate_cross_page", "site_modification", "desktop_tool"],
         },
         "playbooks": playbooks_for_route(route, route_name),
         "guiderails": runtime_language.get("allowed_guidance", []),
         "answer_boundaries": runtime_language.get("answer_boundaries", []),
         "context_refs": {
             "latest_context_keys": list(latest_context.keys()),
+            "navigation_world": "navigation_world.json" if navigation_world else None,
+            "semantic_tile_route": route if tile else None,
         },
     }
 
@@ -133,7 +215,7 @@ def infer_summary(route: str, page_purpose: str, runtime_language: Dict[str, Any
 
 
 def playbooks_for_route(route: str, route_name: str) -> List[str]:
-    playbooks = ["answer_short_for_tts", "pointer_resolve_before_ping"]
+    playbooks = ["answer_short_for_tts", "pointer_resolve_before_ping", "localize_before_guidance"]
     if route != "/":
         playbooks.append(f"route_specific_guidance:{route_name}")
     if "marketplace" in route:
@@ -150,7 +232,9 @@ def summarize_targets(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]
             "type": record.get("target_type"),
             "meaning": record.get("meaning"),
             "confidence": record.get("confidence"),
+            "confidence_class": record.get("confidence_class"),
             "allowed_actions": record.get("allowed_actions", []),
+            "must_verify_live_dom": True,
         }
         for record in records
     ]
@@ -198,6 +282,11 @@ def load_json(path: Path) -> Dict[str, Any]:
     return data
 
 
+def load_optional_json(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {}
+    return load_json(path)
+
+
 if __name__ == "__main__":
     main()
-
