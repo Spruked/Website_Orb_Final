@@ -8,16 +8,6 @@ from ..runtime.site_world import SiteWorld, normalize_route
 def route_pointer_targets(world: SiteWorld, route: str, query: str = "", limit: int = 5) -> List[Dict[str, Any]]:
     normalized = normalize_route(route)
 
-    # Once a navigation-world readiness contract exists, it is authoritative
-    # for whether pointer candidates may leave the knowledge layer at all.
-    # This prevents legacy answer responses from surfacing pointer candidates
-    # while Pointer Recovery or route/locator conflict resolution is blocking
-    # runtime guidance.
-    if world.navigation_world:
-        readiness = world.navigation_world.get("guidance_readiness") or {}
-        if readiness and readiness.get("pointer_execution_available") is not True:
-            return []
-
     records = list(world.pointer_by_route.get(normalized, []))
 
     # Legacy packages without a navigation world used the home route as a broad
@@ -27,12 +17,78 @@ def route_pointer_targets(world: SiteWorld, route: str, query: str = "", limit: 
     if not records and normalized != "/" and not world.has_navigation_route(normalized):
         records = list(world.pointer_by_route.get("/", []))
 
-    records = [record for record in records if _guidance_candidate(record)]
+    records = [
+        record
+        for record in records
+        if _guidance_candidate(record)
+        and _navigation_guidance_candidate(world, normalized, record)
+    ]
     if query:
         records.sort(key=lambda record: _score_record(record, query), reverse=True)
     else:
         records.sort(key=lambda record: float(record.get("confidence") or 0), reverse=True)
     return records[:limit]
+
+
+def _navigation_guidance_candidate(
+    world: SiteWorld,
+    route: str,
+    record: Dict[str, Any],
+) -> bool:
+    """Apply navigation-world authority only to this route/target identity."""
+    navigation = world.navigation_world or {}
+    if not navigation:
+        return True
+
+    readiness = navigation.get("guidance_readiness") or {}
+    route_status = readiness.get("route_status") or {}
+    state = route_status.get(route) if isinstance(route_status, dict) else None
+
+    # Route-local readiness may fail closed. Global map readiness may not veto
+    # an otherwise verified target on this route.
+    if isinstance(state, dict) and state.get("status") == "NO_ELIGIBLE_TARGET":
+        return False
+
+    registry = navigation.get("pointer_registry") or {}
+    if not isinstance(registry, dict):
+        registry = {}
+
+    target_id = str(record.get("target_id") or "")
+
+    conflicted_target_ids = {
+        str(value)
+        for value in registry.get("conflicted_target_ids") or []
+        if value
+    }
+
+    # Backward compatibility with navigation worlds created before the
+    # flattened conflicted_target_ids field existed.
+    for conflict in registry.get("route_locator_conflicts") or []:
+        if not isinstance(conflict, dict):
+            continue
+        conflicted_target_ids.update(
+            str(value)
+            for value in conflict.get("target_ids") or []
+            if value
+        )
+
+    if target_id and target_id in conflicted_target_ids:
+        return False
+
+    pois = registry.get("pois") or {}
+    poi = pois.get(target_id) if isinstance(pois, dict) and target_id else None
+
+    if isinstance(poi, dict):
+        if poi.get("identity_conflict") is True:
+            return False
+        if poi.get("guidance_eligible") is False:
+            return False
+
+        poi_route = poi.get("route")
+        if poi_route and normalize_route(poi_route) != route:
+            return False
+
+    return True
 
 
 def _guidance_candidate(record: Dict[str, Any]) -> bool:

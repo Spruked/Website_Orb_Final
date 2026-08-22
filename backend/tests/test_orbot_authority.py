@@ -129,14 +129,33 @@ class WebsiteOrbAuthorityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["envelopes"][0]["primitive"]["lane"], "pointer")
         self.assertEqual(result["permit"]["world_etag"], result["world_etag"])
 
-    async def test_pointer_recovery_block_remains_authoritative(self):
-        authority = WebsiteOrbAuthority(make_world(ready=False))
+    async def test_pointer_recovery_blocks_map_health_not_verified_target_guidance(self):
+        world = make_world()
+
+        world.navigation_world["guidance_readiness"].update(
+            {
+                "status": "BLOCKED",
+                "blockers": ["POINTER_RECOVERY_REQUIRED"],
+                "map_recovery_required": True,
+                "pointer_execution_available": False,
+                "pointer_execution_scope": "route_target",
+                "target_scoped_authority": True,
+                "route_status": {
+                    "/": {"status": "ELIGIBLE", "eligible_count": 1},
+                    "/pricing": {"status": "ELIGIBLE", "eligible_count": 1},
+                },
+            }
+        )
+
+        authority = WebsiteOrbAuthority(world)
         result = await authority.authorize_pointer(
             current_route="/pricing",
             query="show me pricing",
+            target_id="pricing-buy",
         )
-        self.assertEqual(result["status"], "BLOCKED")
-        self.assertEqual(result["reason"], "POINTER_GUIDANCE_NOT_READY")
+
+        self.assertEqual(result["status"], "PERMITTED")
+        self.assertEqual(result["target"]["target_id"], "pricing-buy")
 
     async def test_cross_route_navigation_requires_explicit_confirmation(self):
         authority = WebsiteOrbAuthority(make_world())
@@ -188,6 +207,86 @@ class WebsiteOrbAuthorityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("pricing-buy", state.forbidden_regions)
         self.assertIn("pricing-buy-2", state.forbidden_regions)
 
+
+    def test_conflicted_route_targets_are_removed_before_candidate_selection(self):
+        world = make_world(conflict=True)
+
+        world.navigation_world["pointer_registry"]["conflicted_target_ids"] = [
+            "pricing-buy",
+            "pricing-buy-2",
+        ]
+        world.navigation_world["guidance_readiness"].update(
+            {
+                "status": "DEGRADED",
+                "blockers": ["ROUTE_LOCATOR_CONFLICTS"],
+                "pointer_execution_available": True,
+                "pointer_execution_scope": "route_target",
+                "target_scoped_authority": True,
+                "route_status": {
+                    "/": {"status": "ELIGIBLE", "eligible_count": 1},
+                    "/pricing": {
+                        "status": "NO_ELIGIBLE_TARGET",
+                        "eligible_count": 0,
+                    },
+                },
+            }
+        )
+
+        pricing = route_pointer_targets(
+            world,
+            "/pricing",
+            query="buy pricing",
+            limit=12,
+        )
+        self.assertEqual(pricing, [])
+
+        home = route_pointer_targets(
+            world,
+            "/",
+            query="start",
+            limit=12,
+        )
+        self.assertEqual(
+            [record["target_id"] for record in home],
+            ["home-start"],
+        )
+
+    async def test_conflicted_requested_target_replans_before_authority(self):
+        world = make_world(conflict=True)
+
+        world.navigation_world["pointer_registry"]["conflicted_target_ids"] = [
+            "pricing-buy",
+            "pricing-buy-2",
+        ]
+        world.navigation_world["guidance_readiness"].update(
+            {
+                "status": "DEGRADED",
+                "blockers": ["ROUTE_LOCATOR_CONFLICTS"],
+                "pointer_execution_available": True,
+                "pointer_execution_scope": "route_target",
+                "target_scoped_authority": True,
+                "route_status": {
+                    "/": {"status": "ELIGIBLE", "eligible_count": 1},
+                    "/pricing": {
+                        "status": "NO_ELIGIBLE_TARGET",
+                        "eligible_count": 0,
+                    },
+                },
+            }
+        )
+
+        authority = WebsiteOrbAuthority(world)
+        result = await authority.authorize_pointer(
+            current_route="/pricing",
+            query="buy pricing",
+            target_id="pricing-buy",
+        )
+
+        self.assertEqual(result["status"], "REPLAN")
+        self.assertEqual(
+            result["reason"],
+            "NO_VERIFIED_ROUTE_LOCAL_POINTER_TARGET",
+        )
 
 if __name__ == "__main__":
     unittest.main()

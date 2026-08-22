@@ -104,14 +104,6 @@ class WebsiteOrbAuthority:
         target_id: Optional[str] = None,
         cycle_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        readiness = self.world.navigation_world.get("guidance_readiness") or {}
-        if readiness.get("pointer_execution_available") is not True:
-            return {
-                "status": "BLOCKED",
-                "reason": "POINTER_GUIDANCE_NOT_READY",
-                "guidance_readiness": readiness,
-            }
-
         localized = self.localize(current_route)
         route = normalize_route(localized["route"])
         candidates = route_pointer_targets(self.world, route, query=query, limit=12)
